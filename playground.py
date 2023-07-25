@@ -16,7 +16,7 @@ def listen():
     data = request.get_json()
 
     # Extract relevant information from the JSON
-    company_name = data.get("Company-name", "Unknown_Company")
+    company_name = data.get("Company-name", "")
     job_listing = data.get("Job-Listing", "")
     recruiter = data.get("Recruiter", "")
     date = data.get("Date", "")
