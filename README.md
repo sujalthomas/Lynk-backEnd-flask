@@ -66,7 +66,7 @@ Contributions, issues, and feature requests are welcome! Feel free to check [iss
 
 - Thanks to [OpenAI](https://openai.com/) for their amazing GPT-3 model.
 - Flask for being a lightweight and efficient server framework.
-
+```
 ---
 
 <p align="center">
