@@ -1,73 +1,71 @@
-# Cover Letter Generator - Backend 🚀
+ # Cover Letter Generator - Backend 🚀
 
-<p align="center">
-  <img src="https://img.icons8.com/clouds/200/000000/document.png"/>
-</p>
+ <p align="center">
+   <img src="https://img.icons8.com/clouds/200/000000/document.png"/>
+ </p>
 
-The Cover Letter Generator backend uses the power of GPT-3.5 Turbo from OpenAI to craft compelling cover letters tailored to job listings.
+ Elevate your job applications with the Cover Letter Generator backend. Leveraging the might of GPT-3.5 Turbo from OpenAI, this tool crafts persuasive cover letters tailored to job listings, offering you a competitive edge in the job market.
 
-## 📚 Table of Contents
+ ## 📚 Table of Contents
 
-- [Features](#-features)
-- [Getting Started](#-getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Installation](#installation)
-- [Usage](#-usage)
-- [Contributing](#-contributing)
-- [License](#-license)
-- [Acknowledgments](#-acknowledgments)
+ - [Features](#-features)
+ - [Getting Started](#-getting-started)
+   - [Prerequisites](#prerequisites)
+   - [Installation](#installation)
+ - [Usage](#-usage)
+ - [API Endpoints](#-api-endpoints)
+ - [Contributing](#-contributing)
+ - [License](#-license)
+ - [Acknowledgments](#-acknowledgments)
 
-## 🌟 Features
+ ## 🌟 Features
 
-- **Automatic Cover Letter Generation:** Using GPT-3.5 Turbo's capabilities to create unique cover letters based on user's resume and job listings.
-- **File Output:** Automatically generates a `.docx` file ready for download.
+ - **Tailored Cover Letter Generation:** Tapping into the capabilities of GPT-3.5 Turbo to deliver unique, tailored cover letters based on a user's resume and specific job listings.
+ - **Seamless File Output:** Outputs a `.docx` file directly, ready for download, making the job application process more streamlined.
 
-## 🚀 Getting Started
+ ## 🚀 Getting Started
 
-### Prerequisites
+ ### Prerequisites
 
-- Flask
-- OpenAI API access
-- python-docx
+ - Flask
+ - OpenAI API access
+ - python-docx
+ - PyPDF2
 
-### Installation
+ ### Installation
 
-1. Clone this repository:
+ 1. Clone the repository:
     ```bash
     git clone https://github.com/YourUsername/CoverLetterGenerator-backend.git
     ```
-2. Navigate to the project directory:
+ 2. Change into the project directory:
     ```bash
     cd CoverLetterGenerator-backend
     ```
-3. Install the required packages:
+ 3. Install the necessary packages:
     ```bash
-    pip install flask openai python-docx flask_cors
+    pip install flask openai python-docx flask_cors PyPDF2
     ```
-4. Set up your OpenAI API key in `keysconfig.py`:
+ 4. Enter your OpenAI API key in `keysconfig.py`:
     ```python
     openai_api_key = "YOUR_OPENAI_API_KEY"
     ```
 
-## 🖥 Usage
+ ## 🖥 Usage
 
-Run the Flask server:
-```bash
-python server.py
+ To initiate the Flask server:
+ ```bash
+ python server.py
+ ```
+ This will launch the server at `http://0.0.0.0:3000/`. The primary endpoint for interaction is `/generate-cover-letter`. When paired with the frontend, users can draw details from job listings and prompt the backend to generate a unique cover letter for that specific listing.
 
-The server will start on `http://0.0.0.0:3000/`. The main endpoint to interact with is `/generate-cover-letter`.
+ ## 🤝 Contributing
+ Contributions, issues, and feature requests are more than welcome! Feel free to review the [issues page](https://github.com/sujalthomas/Lynk-backEnd-flask/issues).
 
-When paired with the frontend, users can extract details from job listings and request the backend to create a unique cover letter tailored to that listing.
+ ## 🎉 Acknowledgments
 
-## 🤝 Contributing
-Contributions, issues, and feature requests are welcome! Feel free to check [issues page](https://github.com/sujalthomas/Lynk-backEnd-flask/issues).
-
-## 🎉 Acknowledgments
-
-- Thanks to [OpenAI](https://openai.com/) for their amazing GPT-3 model.
-- Flask for being a lightweight and efficient server framework.
-```
----
+ - Immense gratitude to [OpenAI](https://openai.com/) for their groundbreaking GPT-3 model.
+ - Kudos to Flask for being a lightweight and powerful server framework.
 
 <p align="center">
   Made with ❤️ by Sujal Thomas Tatipelli
