@@ -46,10 +46,7 @@
     ```bash
     pip install flask openai python-docx flask_cors PyPDF2
     ```
- 4. Enter your OpenAI API key in `keysconfig.py`:
-    ```python
-    openai_api_key = "YOUR_OPENAI_API_KEY"
-    ```
+4.  OpenAI API Key is retrieved from the front-end
 
  ## 🖥 Usage
 
