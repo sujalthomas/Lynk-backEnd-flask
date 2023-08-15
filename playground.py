@@ -3,14 +3,14 @@ from werkzeug.security import check_password_hash as verify_password
 from flask_security.forms import RegisterForm, LoginForm
 from wtforms import StringField
 from wtforms.validators import DataRequired
-from flask import Flask, request, send_file, jsonify
+from flask import Flask, request, send_file, jsonify, url_for
 from dotenv import load_dotenv
 import openai
 from docx import Document
 import os
 from flask_cors import CORS
 import PyPDF2
-from itsdangerous import URLSafeTimedSerializer as Serializer
+from itsdangerous import URLSafeTimedSerializer
 from flask_security import (
     Security,
     SQLAlchemyUserDatastore,
@@ -25,6 +25,8 @@ import uuid
 from flask_session import Session
 import redis
 import logging
+from flask_mail import Mail, Message
+
 
 
 app = Flask(__name__)
@@ -64,7 +66,7 @@ db = SQLAlchemy(app)
 
 SECRET_KEY = os.getenv("SECRET_KEY", default=secrets.token_urlsafe(16))
 app.config["SECRET_KEY"] = SECRET_KEY
-serializer = Serializer(SECRET_KEY)
+serializer = URLSafeTimedSerializer(app.config["SECRET_KEY"])
 
 app.config["SECURITY_PASSWORD_SALT"] = os.getenv(
     "SECURITY_PASSWORD_SALT", default="your_random_salt"
@@ -75,6 +77,12 @@ app.config["SECURITY_PASSWORD_SALT"] = os.getenv(
     "SECURITY_PASSWORD_SALT", default="your_random_salt"
 )
 
+app.config['MAIL_SERVER'] = 'smtp.example.com' # Your SMTP server
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = 'your-email@example.com' # Your email
+app.config['MAIL_PASSWORD'] = 'your-password' # Your password
+mail = Mail(app)
 
 UPLOAD_FOLDER = os.path.dirname(os.path.abspath(__file__))
 
@@ -278,6 +286,50 @@ def listen():
     return send_file(full_path, as_attachment=True, download_name=filename)
 
 
+@app.route("/request-reset-password", methods=["POST"])
+def request_reset_password():
+    data = request.get_json()
+    email = data.get("email")
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        return jsonify(success=False, message="User not found"), 404
+
+    token = serializer.dumps({"user": user.user_id}, salt="password-reset")
+    reset_url = url_for('request_reset_password', token=token, _external=True)
+    msg = Message("Password Reset Request",
+                  sender="noreply@yourdomain.com",
+                  recipients=[email])
+    msg.body = f"To reset your password, follow the link: {reset_url}"
+    mail.send(msg)
+
+    return jsonify(success=True, message="Password reset email has been sent."), 200
+
+from werkzeug.security import generate_password_hash
+
+@app.route("/reset-password/<token>", methods=["POST"])
+def reset_password_with_token(token):
+    try:
+        # This will raise an exception if the token is invalid or has expired
+        data = serializer.loads(token, salt="password-reset", max_age=3600)
+    except:
+        return jsonify(success=False, message="Invalid or expired token"), 401
+
+    user_id = data["user"]
+    user = User.query.get(user_id)
+    
+    if not user:
+        return jsonify(success=False, message="User not found"), 404
+
+    # Here, you can fetch the user using the user_id and update their password
+    new_password = request.json.get('newPassword')
+    hashed_password = generate_password_hash(new_password, method='sha256')
+    user.password = hashed_password
+    db.session.commit()
+
+    return jsonify(success=True, message="Password reset successful"), 200
+
+
+
 @app.route("/upload-resume", methods=["POST"])
 def upload_resume():
     if "resume" not in request.files:
@@ -330,6 +382,7 @@ def upload_resume():
 @app.route("/authenticate", methods=["POST"])
 def authenticate():
     data = request.get_json()
+    print(data)
     action = data.get("action")
     email = data.get("email")
     password = data.get("password")
@@ -337,6 +390,7 @@ def authenticate():
     if action == "register":
         name = data.get("name")
         hashed_password = encrypt_password(password)
+        print(hashed_password)
 
         user = User.query.filter_by(email=email).first()
         if user:
@@ -357,15 +411,15 @@ def authenticate():
 
     elif action == "login":
         user = User.query.filter_by(email=email).first()
-        if not user or not verify_password(password, user.password):
-            return jsonify(success=False, message="Invalid email or password"), 401
+    if not user or not verify_password(user.password, password):
+        return jsonify(success=False, message="Invalid email or password"), 401
 
-        # Generate token or handle login as needed
-        token = serializer.dumps({"user": user.id})
-        return jsonify(success=True, token=token), 200
+    # Generate token or handle login as needed
+    token = serializer.dumps({"user": user.user_id}, salt="password-reset")
+    return jsonify(success=True, token=token), 200
 
-    else:
-        return jsonify(success=False, message="Invalid action"), 400
+
+
 
 
 @app.route("/admin")
