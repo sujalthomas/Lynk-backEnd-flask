@@ -1,219 +1,28 @@
+from flask import Flask, request, send_file, jsonify, url_for
+from . import app, db
+from .models import Resume, Role, User
+from .utils import is_api_key_valid, convert_to_txt
+from itsdangerous import URLSafeTimedSerializer
+import openai 
+import logging
+from docx import Document
+import os
+from flask_mail import Mail as FlaskMail, Message 
+from flask_mail import Mail, Message 
 from werkzeug.security import generate_password_hash as encrypt_password
 from werkzeug.security import check_password_hash as verify_password
-from flask_security.forms import RegisterForm, LoginForm
-from wtforms import StringField
-from wtforms.validators import DataRequired
-from flask import Flask, request, send_file, jsonify, url_for 
-from dotenv import load_dotenv
-import openai 
-from docx import Document 
-import os 
-from flask_cors import CORS
-import PyPDF2
-from itsdangerous import URLSafeTimedSerializer
 from flask_security import (
-    Security,
-    SQLAlchemyUserDatastore,
-    UserMixin,
-    RoleMixin,
     roles_required,
     login_required,
 )
-from flask_sqlalchemy import SQLAlchemy
-import secrets
-from flask_session import Session
-import redis
-import logging 
-from flask_mail import Mail as FlaskMail, Message 
+
+
 from werkzeug.security import generate_password_hash 
 
-#initializations
-
-app = Flask(__name__) #
-load_dotenv() 
-
-sess = Session()
-sess.init_app(app)
-mail = FlaskMail(app)
-
-# Database configurations
-DB_USERNAME = os.getenv("DB_USERNAME")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_HOST = os.getenv("DB_HOST")
-DB_PORT = os.getenv("DB_PORT")
-DB_NAME = os.getenv("DB_NAME")
-
-app.config[
-    "SQLALCHEMY_DATABASE_URI"
-] = f"postgresql://{DB_USERNAME}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-
-# Session configurations 
-app.config["SESSION_TYPE"] = "redis"
-app.config["SESSION_PERMANENT"] = False
-app.config["SESSION_USE_SIGNER"] = True
-app.config["SESSION_KEY_PREFIX"] = "your_app:"
-app.config["SESSION_REDIS"] = redis.StrictRedis(
-    host=os.getenv("REDIS_HOST", "localhost"), port=os.getenv("REDIS_PORT", 6379), db=0
-)
-
-CORS(
-    app,
-    resources={r"/*": {"origins": ["https://www.linkedin.com"]}},
-    supports_credentials=True,
-)
-
-# Database configuration
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-db = SQLAlchemy(app)
-
-# Secuirty configurations
-SECRET_KEY = os.getenv("SECRET_KEY", default=secrets.token_urlsafe(16))
-app.config["SECRET_KEY"] = SECRET_KEY
 serializer = URLSafeTimedSerializer(app.config["SECRET_KEY"])
+mail = FlaskMail(app)
+# ... other imports ...
 
-app.config["SECURITY_PASSWORD_SALT"] = os.getenv(
-    "SECURITY_PASSWORD_SALT", default="your_random_salt"
-)
-app.config["SECURITY_REGISTERABLE"] = True
-app.config["SECURITY_RECOVERABLE"] = True
-app.config["SECURITY_PASSWORD_SALT"] = os.getenv(
-    "SECURITY_PASSWORD_SALT", default="your_random_salt"
-)
-
-# Mail Configurations
-app.config["YOUR_SENDGRID_API_KEY"] = os.getenv("SENDGRID_API_KEY")
-app.config["MAIL_SERVER"] = "smtp.sendgrid.net"
-app.config["MAIL_PORT"] = 587  # 465 for TLS
-app.config["MAIL_USERNAME"] = "apikey"
-app.config["MAIL_PASSWORD"] = os.environ.get("MAIL_PASSWORD")
-app.config["MAIL_USE_TLS"] = True
-app.config["MAIL_USE_SSL"] = False
-
-# Current folder path
-UPLOAD_FOLDER = os.path.dirname(os.path.abspath(__file__))
-
-# Configuration options
-app.config["SECURITY_REGISTERABLE"] = True
-app.config["SECURITY_RECOVERABLE"] = True
-app.config["SECURITY_TRACKABLE"] = True
-logging.basicConfig(level=logging.INFO)
-
-# Configuring Flask-Security with the custom registration form
-app.config["SECURITY_REGISTER_USER_TEMPLATE"] = "security/register_user.html"
-app.config["SECURITY_REGISTERABLE"] = True
-app.config["SECURITY_CONFIRMABLE"] = True
-app.config["SECURITY_RECOVERABLE"] = True
-app.config["SECURITY_REGISTER_USER_TEMPLATE"] = "security/register_user.html"
-app.config["SECURITY_LOGIN_USER_TEMPLATE"] = "security/login_user.html"
-
-
-# MODELS ###############
-# Define models #######
-
-#cvs generated
-class CoverLetter(db.Model):
-    cover_letter_id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.user_id"), nullable=False)
-    company_name = db.Column(db.String(100))
-    job_listing = db.Column(db.Text)
-    recruiter = db.Column(db.String(100))
-    date = db.Column(db.DateTime, default=db.func.current())
-    file_path = db.Column(db.String(255))
-    user = db.relationship("User", backref="cover_letters")
-
-# resumes uploaded
-class Resume(db.Model):
-    resume_id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.user_id"), nullable=False)
-    content = db.Column(db.Text)
-    upload_date = db.Column(db.DateTime, default=db.func.current())
-    user = db.relationship("User", backref="resumes")
-
-# usage statistics
-class UsageStatistic(db.Model):
-    stat_id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.user_id"))
-    action = db.Column(db.String(50))
-    date = db.Column(db.DateTime, default=db.func.current())
-    user = db.relationship("User", backref="usage_statistics")
-
-# Define roles
-class Role(db.Model, RoleMixin):
-    id = db.Column(db.Integer(), primary_key=True)
-    name = db.Column(db.String(80), unique=True)
-    description = db.Column(db.String(255))
-
-# user roles
-roles_users = db.Table(
-    "roles_users",
-    db.Column("user_id", db.Integer(), db.ForeignKey("user.user_id")),
-    db.Column("role_id", db.Integer(), db.ForeignKey("role.id")),
-)
-
-# Define User model
-class User(db.Model, UserMixin):
-    user_id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(255))
-    password = db.Column(db.String(255), nullable=False)
-    email = db.Column(db.String(150), unique=True, nullable=False)
-    fs_uniquifier = db.Column(db.String(255), unique=True)  # Add this line
-    roles = db.relationship(
-        "Role", secondary=roles_users, backref=db.backref("users", lazy="dynamic")
-    )
-
-# Generate DB tables
-with app.app_context():
-    db.create_all()
-
-# Define hashed_password
-password = "supersecretpassword"
-hashed_password = encrypt_password(password)
-
-# Setup Flask-Security
-user_datastore = SQLAlchemyUserDatastore(db, User, Role)
-
-
-# Custom registration form
-class ExtendedRegisterForm(RegisterForm):
-    username = StringField("Username", [DataRequired()])
-
-
-# Utils ###############
-# Define utils #######
-
-# Setup Flask-Security
-security = Security(app, user_datastore, register_form=ExtendedRegisterForm)
-
-def init_security(app, user_datastore):
-    return Security(app, user_datastore)
-
-def is_api_key_valid(api_key):
-    openai.api_key = api_key
-    try:
-        response = openai.Completion.create(
-            engine="davinci", prompt="This is a test.", max_tokens=5
-        )
-    except:
-        return False
-    else:
-        return True
-
-def convert_to_txt(file, file_type):
-    if file_type == "docx":
-        doc = Document(file)
-        return "\n".join([p.text for p in doc.paragraphs])
-    elif file_type == "pdf":
-        reader = PyPDF2.PdfReader(file)
-        return "\n".join(
-            [reader.pages[i].extract_text() for i in range(len(reader.pages))]
-        )
-    else:
-        raise ValueError("Unsupported file type")
-
-
-# Routes ###############
-# Define routes #######
-# api key verification  
 @app.route("/apiverify", methods=["POST"])
 def apiverify():
     data = request.get_json()
@@ -229,7 +38,7 @@ def apiverify():
         logging.error(str(e))
         return jsonify(success=False, message="Invalid API key"), 401
 
-# cover letter generation
+
 @app.route("/cover-letter", methods=["POST", "GET", "PUT", "DELETE"])
 def listen():
     token = request.headers.get("Authorization")
@@ -298,7 +107,7 @@ def listen():
 
     return send_file(full_path, as_attachment=True, download_name=filename)
 
-# user registration
+
 @app.route("/request-reset-password", methods=["POST"])
 def request_reset_password():
     data = request.get_json()
@@ -317,7 +126,7 @@ def request_reset_password():
 
     return jsonify(success=True, message="Password reset email has been sent."), 200
 
-# password reset with token
+
 @app.route("/reset-password/<token>", methods=["POST"])
 def reset_password_with_token(token):
     try:
@@ -340,7 +149,7 @@ def reset_password_with_token(token):
 
     return jsonify(success=True, message="Password reset successful"), 200
 
-# upload resume
+
 @app.route("/upload-resume", methods=["POST"])
 def upload_resume():
     if "resume" not in request.files:
@@ -375,6 +184,8 @@ def upload_resume():
     db.session.add(resume)
     db.session.commit()
 
+    UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
+
     user_folder = os.path.join(UPLOAD_FOLDER, str(user_id))
 
     if not os.path.exists(user_folder):
@@ -389,7 +200,6 @@ def upload_resume():
         200,
     )
 
-# user authentication
 @app.route("/authenticate", methods=["POST"])
 def authenticate():
     data = request.get_json()
@@ -430,13 +240,9 @@ def authenticate():
     return jsonify(success=True, token=token), 200
 
 
-# admin page
+
 @app.route("/admin")
 @roles_required("admin")
 @login_required
 def admin():
     return "Admin Page"
-
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=3000, debug=True)
