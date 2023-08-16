@@ -26,7 +26,9 @@ from flask_session import Session
 import redis
 import logging
 from flask_mail import Mail, Message
-
+from flask_mail import Mail as FlaskMail, Message
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
 
 
 app = Flask(__name__)
@@ -53,6 +55,7 @@ app.config["SESSION_REDIS"] = redis.StrictRedis(
 sess = Session()
 sess.init_app(app)
 
+app.config["YOUR_SENDGRID_API_KEY"] = os.getenv("SENDGRID_API_KEY")
 
 CORS(
     app,
@@ -77,12 +80,15 @@ app.config["SECURITY_PASSWORD_SALT"] = os.getenv(
     "SECURITY_PASSWORD_SALT", default="your_random_salt"
 )
 
-app.config['MAIL_SERVER'] = 'smtp.example.com' # Your SMTP server
-app.config['MAIL_PORT'] = 587
-app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = 'your-email@example.com' # Your email
-app.config['MAIL_PASSWORD'] = 'your-password' # Your password
-mail = Mail(app)
+app.config["MAIL_SERVER"] = "smtp.sendgrid.net"
+app.config["MAIL_PORT"] = 587  # 465 for TLS
+app.config["MAIL_USERNAME"] = "apikey"
+app.config["MAIL_PASSWORD"] = os.environ.get("MAIL_PASSWORD")
+app.config["MAIL_USE_TLS"] = True
+app.config["MAIL_USE_SSL"] = False
+
+
+mail = FlaskMail(app)
 
 UPLOAD_FOLDER = os.path.dirname(os.path.abspath(__file__))
 
@@ -295,16 +301,18 @@ def request_reset_password():
         return jsonify(success=False, message="User not found"), 404
 
     token = serializer.dumps({"user": user.user_id}, salt="password-reset")
-    reset_url = url_for('request_reset_password', token=token, _external=True)
-    msg = Message("Password Reset Request",
-                  sender="noreply@yourdomain.com",
-                  recipients=[email])
-    msg.body = f"To reset your password, follow the link: {reset_url}"
+    reset_url = url_for("request_reset_password", token=token, _external=True)
+    msg = Message(
+        "Password Reset Request", sender="lynktools@gmail.com", recipients=[email]
+    )
+    msg.body = f"To reset your password, click on the following link: {reset_url}"
     mail.send(msg)
 
     return jsonify(success=True, message="Password reset email has been sent."), 200
 
+
 from werkzeug.security import generate_password_hash
+
 
 @app.route("/reset-password/<token>", methods=["POST"])
 def reset_password_with_token(token):
@@ -316,18 +324,17 @@ def reset_password_with_token(token):
 
     user_id = data["user"]
     user = User.query.get(user_id)
-    
+
     if not user:
         return jsonify(success=False, message="User not found"), 404
 
     # Here, you can fetch the user using the user_id and update their password
-    new_password = request.json.get('newPassword')
-    hashed_password = generate_password_hash(new_password, method='sha256')
+    new_password = request.json.get("newPassword")
+    hashed_password = generate_password_hash(new_password, method="sha256")
     user.password = hashed_password
     db.session.commit()
 
     return jsonify(success=True, message="Password reset successful"), 200
-
 
 
 @app.route("/upload-resume", methods=["POST"])
@@ -417,8 +424,6 @@ def authenticate():
     # Generate token or handle login as needed
     token = serializer.dumps({"user": user.user_id}, salt="password-reset")
     return jsonify(success=True, token=token), 200
-
-
 
 
 
