@@ -107,6 +107,72 @@ def listen():
 
     return send_file(full_path, as_attachment=True, download_name=filename)
 
+
+
+# resume generation
+@app.route("/generate-resume", methods=["POST"])
+def generate_resume():
+    token = request.headers.get("Authorization")
+    try:
+        data = serializer.loads(token, max_age=3600)
+    except:
+        return jsonify(success=False, message="Invalid or expired token"), 401
+
+    data = request.get_json()
+    api_key = data.get("apiKey")
+    openai.api_key = api_key
+
+    resume_original = data.get("Resume", "")
+    job_description = data.get("Job-Description", "")
+
+    try:
+        completion = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant that will reword a resume to better align it with a job description. Your goal is to highlight the candidate's skills and experiences, making them match the job's requirements as closely as possible.",
+                },
+                {
+                    "role": "user",
+                    "content": f"Given this original resume: {resume_original}, and this job description: {job_description}, please reword the resume to better fit the job requirements."
+                },
+            ],
+            temperature=1.3,
+            top_p=0.9,
+            max_tokens=1000,
+            frequency_penalty=0.5,
+            presence_penalty=0.5,
+        )
+    except openai.error.OpenAIError as e:
+        print("OpenAI API Error:", e)
+        return jsonify(success=False, message="OpenAI API Error"), 500
+
+    reworded_resume_content = completion.choices[0].message.content
+    base_filename = "reworded_resume.docx"
+    filename = base_filename
+    count = 1
+
+    # Check if "Generated_Resumes" folder exists, if not, create it
+    folder_name = "Generated_Resumes"
+    if not os.path.exists(folder_name):
+        os.mkdir(folder_name)
+
+    # Ensure unique filename within the "Generated_Resumes" folder
+    while os.path.isfile(os.path.join(folder_name, filename)):
+        filename = f"reworded_resume({count}).docx"
+        count += 1
+
+    # Create the document and save it inside "Generated_Resumes" folder
+    doc = Document()
+    doc.add_paragraph(reworded_resume_content)
+    full_path = os.path.join(folder_name, filename)
+    doc.save(full_path)
+
+    return send_file(full_path, as_attachment=True, download_name=filename)
+
+
+
 # user registration
 @app.route("/request-reset-password", methods=["POST"])
 def request_reset_password():
