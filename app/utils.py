@@ -2,6 +2,9 @@ import openai
 from docx import Document
 import PyPDF2
 
+# Utils ###############
+# Define utils #######
+
 def is_api_key_valid(api_key):
     openai.api_key = api_key
     try:

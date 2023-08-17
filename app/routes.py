@@ -1,5 +1,5 @@
 from flask import Flask, request, send_file, jsonify, url_for
-from . import app, db
+from . import UPLOAD_FOLDER, app, db
 from .models import Resume, Role, User
 from .utils import is_api_key_valid, convert_to_txt
 from itsdangerous import URLSafeTimedSerializer
@@ -15,14 +15,14 @@ from flask_security import (
     roles_required,
     login_required,
 )
-
-
 from werkzeug.security import generate_password_hash 
 
 serializer = URLSafeTimedSerializer(app.config["SECRET_KEY"])
 mail = FlaskMail(app)
-# ... other imports ...
 
+# Routes ###############
+# Define routes #######
+# api key verification  
 @app.route("/apiverify", methods=["POST"])
 def apiverify():
     data = request.get_json()
@@ -38,7 +38,7 @@ def apiverify():
         logging.error(str(e))
         return jsonify(success=False, message="Invalid API key"), 401
 
-
+# cover letter generation
 @app.route("/cover-letter", methods=["POST", "GET", "PUT", "DELETE"])
 def listen():
     token = request.headers.get("Authorization")
@@ -107,7 +107,7 @@ def listen():
 
     return send_file(full_path, as_attachment=True, download_name=filename)
 
-
+# user registration
 @app.route("/request-reset-password", methods=["POST"])
 def request_reset_password():
     data = request.get_json()
@@ -126,7 +126,7 @@ def request_reset_password():
 
     return jsonify(success=True, message="Password reset email has been sent."), 200
 
-
+# password reset with token
 @app.route("/reset-password/<token>", methods=["POST"])
 def reset_password_with_token(token):
     try:
@@ -149,7 +149,7 @@ def reset_password_with_token(token):
 
     return jsonify(success=True, message="Password reset successful"), 200
 
-
+# upload resume
 @app.route("/upload-resume", methods=["POST"])
 def upload_resume():
     if "resume" not in request.files:
@@ -184,8 +184,6 @@ def upload_resume():
     db.session.add(resume)
     db.session.commit()
 
-    UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
-
     user_folder = os.path.join(UPLOAD_FOLDER, str(user_id))
 
     if not os.path.exists(user_folder):
@@ -200,6 +198,7 @@ def upload_resume():
         200,
     )
 
+# user authentication
 @app.route("/authenticate", methods=["POST"])
 def authenticate():
     data = request.get_json()
@@ -240,7 +239,7 @@ def authenticate():
     return jsonify(success=True, token=token), 200
 
 
-
+# admin page
 @app.route("/admin")
 @roles_required("admin")
 @login_required
