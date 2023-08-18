@@ -1,28 +1,25 @@
+import token
 from flask import Flask, request, send_file, jsonify, url_for
-from . import UPLOAD_FOLDER, app, db
+from . import UPLOAD_FOLDER, app, db, serializer, mail
 from .models import Resume, Role, User
 from .utils import is_api_key_valid, convert_to_txt
-from itsdangerous import URLSafeTimedSerializer
-import openai 
+import openai
 import logging
 from docx import Document
 import os
-from flask_mail import Mail as FlaskMail, Message 
-from flask_mail import Mail, Message 
+from flask_mail import Mail as FlaskMail, Message
 from werkzeug.security import generate_password_hash as encrypt_password
 from werkzeug.security import check_password_hash as verify_password
 from flask_security import (
     roles_required,
     login_required,
 )
-from werkzeug.security import generate_password_hash 
+from werkzeug.security import generate_password_hash
 
-serializer = URLSafeTimedSerializer(app.config["SECRET_KEY"])
-mail = FlaskMail(app)
 
 # Routes ###############
 # Define routes #######
-# api key verification  
+# api key verification
 @app.route("/apiverify", methods=["POST"])
 def apiverify():
     data = request.get_json()
@@ -37,6 +34,7 @@ def apiverify():
     except Exception as e:
         logging.error(str(e))
         return jsonify(success=False, message="Invalid API key"), 401
+
 
 # cover letter generation
 @app.route("/cover-letter", methods=["POST", "GET", "PUT", "DELETE"])
@@ -108,7 +106,6 @@ def listen():
     return send_file(full_path, as_attachment=True, download_name=filename)
 
 
-
 # resume generation
 @app.route("/generate-resume", methods=["POST"])
 def generate_resume():
@@ -135,7 +132,7 @@ def generate_resume():
                 },
                 {
                     "role": "user",
-                    "content": f"Given this original resume: {resume_original}, and this job description: {job_description}, please reword the resume to better fit the job requirements."
+                    "content": f"Given this original resume: {resume_original}, and this job description: {job_description}, please reword the resume to better fit the job requirements.",
                 },
             ],
             temperature=1.3,
@@ -172,7 +169,6 @@ def generate_resume():
     return send_file(full_path, as_attachment=True, download_name=filename)
 
 
-
 # user registration
 @app.route("/request-reset-password", methods=["POST"])
 def request_reset_password():
@@ -191,6 +187,7 @@ def request_reset_password():
     mail.send(msg)
 
     return jsonify(success=True, message="Password reset email has been sent."), 200
+
 
 # password reset with token
 @app.route("/reset-password/<token>", methods=["POST"])
@@ -215,43 +212,65 @@ def reset_password_with_token(token):
 
     return jsonify(success=True, message="Password reset successful"), 200
 
-# upload resume
+
 @app.route("/upload-resume", methods=["POST"])
 def upload_resume():
+    # Retrieve the token from formData
+    token = request.form.get("user_id")
+    print(token)
+
+    # Check if the token is provided
+    if not token:
+        return jsonify(success=False, message="Token not provided"), 421
+
+    # Deserialize the token to extract user_id
+    try:
+        data = serializer.loads(token, salt="password-reset", max_age=3600)
+        user_id = data["user"]
+        print(user_id)
+    except Exception as e:
+        print(f"Deserialization error: {e}")
+        return jsonify(success=False, message="Invalid or expired token"), 420
+
+
+    # Check if file is present in the request
     if "resume" not in request.files:
         return jsonify(success=False, message="No file part"), 400
 
-    # need to add user_id to the request
-    user_id = request.form.get("user_id")
     file = request.files["resume"]
 
+    # Check if a filename is provided
     if file.filename == "":
         return jsonify(success=False, message="No selected file"), 400
 
-    # Allowed file extensions
+    # Check for allowed file extensions
     ALLOWED_EXTENSIONS = ["pdf", "docx"]
-    if file and file.filename.rsplit(".", 1)[1].lower() not in ALLOWED_EXTENSIONS:
+    if file.filename.rsplit(".", 1)[1].lower() not in ALLOWED_EXTENSIONS:
         return jsonify(success=False, message="File type not allowed"), 400
 
-    if file and (len(file.read()) <= 5 * 1024 * 1024):
-        file.seek(0)
-        file_type = os.path.splitext(file.filename)[1][1:]
+    # Ensure file is not too large
+    if len(file.read()) > 5 * 1024 * 1024:
+        return jsonify(success=False, message="File size exceeds the limit"), 400
 
+    # Reset file pointer after reading
+    file.seek(0)
+    file_type = os.path.splitext(file.filename)[1][1:]
+
+    # Convert file to txt
     try:
         txt_content = convert_to_txt(file, file_type)
-    except Exception as e:
-        return jsonify(success=False, message=str(e)), 500
     except ValueError:
         return jsonify(success=False, message="Unsupported file type"), 400
+    except Exception as e:
+        return jsonify(success=False, message=str(e)), 500
 
+    # Store in database
     resume = Resume(user_id=user_id, content=txt_content)
-
-    # db stuff
     db.session.add(resume)
     db.session.commit()
 
+    # Store the text content in the user's folder
     user_folder = os.path.join(UPLOAD_FOLDER, str(user_id))
-
     if not os.path.exists(user_folder):
         os.mkdir(user_folder)
 
@@ -263,6 +282,7 @@ def upload_resume():
         jsonify(success=True, message="File uploaded and converted successfully"),
         200,
     )
+
 
 # user authentication
 @app.route("/authenticate", methods=["POST"])
@@ -300,8 +320,12 @@ def authenticate():
     if not user or not verify_password(user.password, password):
         return jsonify(success=False, message="Invalid email or password"), 401
 
+    # session["user_id"] = user.user_id
+
     # Generate token or handle login as needed
     token = serializer.dumps({"user": user.user_id}, salt="password-reset")
+    print(token)
+    # print(user)
     return jsonify(success=True, token=token), 200
 
 

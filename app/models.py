@@ -1,3 +1,4 @@
+from datetime import datetime
 from . import db
 from flask_security import (
     Security,
@@ -24,7 +25,7 @@ class CoverLetter(db.Model):
     company_name = db.Column(db.String(100))
     job_listing = db.Column(db.Text)
     recruiter = db.Column(db.String(100))
-    date = db.Column(db.DateTime, default=db.func.current())
+    date = db.Column(db.DateTime, default=db.func.CURRENT_TIMESTAMP)
     file_path = db.Column(db.String(255))
     user = db.relationship("User", backref="cover_letters")
 
@@ -33,7 +34,7 @@ class Resume(db.Model):
     resume_id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.user_id"), nullable=False)
     content = db.Column(db.Text)
-    upload_date = db.Column(db.DateTime, default=db.func.current())
+    upload_date = db.Column(db.DateTime, default=datetime.utcnow)
     user = db.relationship("User", backref="resumes")
 
 # usage statistics
@@ -41,7 +42,7 @@ class UsageStatistic(db.Model):
     stat_id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.user_id"))
     action = db.Column(db.String(50))
-    date = db.Column(db.DateTime, default=db.func.current())
+    date = db.Column(db.DateTime, default=db.func.CURRENT_TIMESTAMP)
     user = db.relationship("User", backref="usage_statistics")
 
 # Define roles
