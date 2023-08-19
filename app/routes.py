@@ -37,27 +37,49 @@ def apiverify():
 
 
 # cover letter generation
-@app.route("/cover-letter", methods=["POST", "GET", "PUT", "DELETE"])
+@app.route("/cover-letter", methods=["POST"])
 def listen():
     token = request.headers.get("Authorization")
     try:
-        data = serializer.loads(token, max_age=3600)
-    except:
+        data = serializer.loads(token, salt="password-reset", max_age=3600)
+    except Exception as e:
+        print(f"Token deserialization error: {e}")
         return jsonify(success=False, message="Invalid or expired token"), 401
+
 
     data = request.get_json()
     api_key = data.get("apiKey")
     openai.api_key = api_key
 
+    # request body data from the frontend and assign it as user_id
+
+
     company_name = data.get("Company-name", "")
     job_listing = data.get("Job-Listing", "")
     recruiter = data.get("Recruiter", "")
     date = data.get("Date", "")
+    user_id = data.get("user_id")
+
+    print(user_id)
+    print(company_name)
+    print(job_listing)
+    print(recruiter)
+    print(date)
+
+    decoded_data = serializer.loads(user_id, salt="password-reset", max_age=3600)
+    
+    user_id_decode = decoded_data["user"]
+    print("User ID:", user_id_decode)
+
+        # Construct the path to the user's folder and the resume inside
+    user_folder_path = os.path.join(UPLOAD_FOLDER, str(user_id_decode))
+    resume_path = os.path.join(user_folder_path, "current_resume.txt")
 
     try:
-        resume = open("current_resume.txt", "r").read()
+        with open(resume_path, "r") as file:
+            resume = file.read()
     except FileNotFoundError:
-        return "Resume file not found.", 404
+        return jsonify(success=False, message="Resume file not found."), 404
 
     try:
         completion = openai.ChatCompletion.create(
@@ -111,7 +133,8 @@ def listen():
 def generate_resume():
     token = request.headers.get("Authorization")
     try:
-        data = serializer.loads(token, max_age=3600)
+        data = serializer.loads(token, salt="password-reset", max_age=3600)
+
     except:
         return jsonify(success=False, message="Invalid or expired token"), 401
 
