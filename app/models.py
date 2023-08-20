@@ -69,6 +69,7 @@ class User(db.Model, UserMixin):
         "Role", secondary=roles_users, backref=db.backref("users", lazy="dynamic")
     )
 
+#proceeding to remove db stuff and establish flask security
 
 
 # Define hashed_password
