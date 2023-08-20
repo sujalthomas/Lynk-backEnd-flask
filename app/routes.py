@@ -1,5 +1,6 @@
+import time
 import token
-from flask import Flask, request, send_file, jsonify, url_for
+from flask import Flask, request, jsonify, url_for
 from . import UPLOAD_FOLDER, app, db, serializer, mail
 from .models import Resume, Role, User
 from .utils import is_api_key_valid, convert_to_txt
@@ -15,6 +16,8 @@ from flask_security import (
     login_required,
 )
 from werkzeug.security import generate_password_hash
+from flask import send_file
+import io
 
 
 # Routes ###############
@@ -35,6 +38,7 @@ def apiverify():
         logging.error(str(e))
         return jsonify(success=False, message="Invalid API key"), 401
 
+user_counters = {}
 
 # cover letter generation
 @app.route("/cover-letter", methods=["POST"])
@@ -119,13 +123,23 @@ def listen():
         filename = f"{company_name}_cv({count}).docx"
         count += 1
 
-    # Create the document and save it inside "Generated_CVs" folder
+    # Create the DOCX in memory
     doc = Document()
     doc.add_paragraph(cover_letter_content)
-    full_path = os.path.join(folder_name, filename)
-    doc.save(full_path)
+    mem_stream = io.BytesIO()
+    doc.save(mem_stream)
 
-    return send_file(full_path, as_attachment=True, download_name=filename)
+    # Reset stream position
+    mem_stream.seek(0)
+
+    # Increment user's counter
+    user_id_decode = str(user_id_decode)  # Ensure the key is a string
+    user_counters[user_id_decode] = user_counters.get(user_id_decode, 0) + 1
+    print(f"User {user_id_decode} has generated {user_counters[user_id_decode]} cover letters.")
+
+    # Send the in-memory DOCX as a file
+    return send_file(mem_stream, as_attachment=True, download_name=filename, mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+
 
 
 # resume generation
@@ -134,16 +148,37 @@ def generate_resume():
     token = request.headers.get("Authorization")
     try:
         data = serializer.loads(token, salt="password-reset", max_age=3600)
-
-    except:
+    except Exception as e:
+        print(f"Token deserialization error: {e}")
         return jsonify(success=False, message="Invalid or expired token"), 401
+
 
     data = request.get_json()
     api_key = data.get("apiKey")
     openai.api_key = api_key
 
-    resume_original = data.get("Resume", "")
     job_description = data.get("Job-Description", "")
+    user_id = data.get("user_id")
+
+    print(user_id)
+    print(job_description)
+
+    decoded_data = serializer.loads(user_id, salt="password-reset", max_age=3600)
+
+    user_id_decode = decoded_data["user"]
+    print("User ID:", user_id_decode)
+
+    # Construct the path to the user's folder and the resume inside
+    user_folder_path = os.path.join(UPLOAD_FOLDER, str(user_id_decode))
+    resume_path = os.path.join(user_folder_path, "current_resume.txt")
+
+    try:
+        with open(resume_path, "r") as file:
+            resume = file.read()
+    except FileNotFoundError:
+        return jsonify(success=False, message="Resume file not found."), 404
+    
+    print(resume)  
 
     try:
         completion = openai.ChatCompletion.create(
@@ -155,7 +190,7 @@ def generate_resume():
                 },
                 {
                     "role": "user",
-                    "content": f"Given this original resume: {resume_original}, and this job description: {job_description}, please reword the resume to better fit the job requirements.",
+                    "content": f"Given this original resume: {resume}, and this job description: {job_description}, please reword the resume to better fit the job requirements.",
                 },
             ],
             temperature=1.3,
@@ -183,13 +218,23 @@ def generate_resume():
         filename = f"reworded_resume({count}).docx"
         count += 1
 
-    # Create the document and save it inside "Generated_Resumes" folder
+    # Create the DOCX in memory
     doc = Document()
     doc.add_paragraph(reworded_resume_content)
-    full_path = os.path.join(folder_name, filename)
-    doc.save(full_path)
+    mem_stream = io.BytesIO()
+    doc.save(mem_stream)
 
-    return send_file(full_path, as_attachment=True, download_name=filename)
+    # Reset stream position
+    mem_stream.seek(0)
+
+    # Increment user's counter
+    user_id_decode = str(user_id_decode)  # Ensure the key is a string
+    user_counters[user_id_decode] = user_counters.get(user_id_decode, 0) + 1
+    print(f"User {user_id_decode} has generated {user_counters[user_id_decode]} cover letters.")
+
+    # Send the in-memory DOCX as a file
+    return send_file(mem_stream, as_attachment=True, download_name=filename, mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+
 
 
 # user registration
