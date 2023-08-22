@@ -1,6 +1,6 @@
 import time
 import token
-from flask import Flask, request, jsonify, url_for
+from flask import Flask, request, jsonify, url_for, render_template
 from . import UPLOAD_FOLDER, app, db, serializer, mail
 from .models import Resume, Role, User
 from .utils import is_api_key_valid, convert_to_txt
@@ -63,12 +63,6 @@ def listen():
     recruiter = data.get("Recruiter", "")
     date = data.get("Date", "")
     user_id = data.get("user_id")
-
-    print(user_id)
-    print(company_name)
-    print(job_listing)
-    print(recruiter)
-    print(date)
 
     decoded_data = serializer.loads(user_id, salt="password-reset", max_age=3600)
     
@@ -252,13 +246,18 @@ def request_reset_password():
         "Password Reset Request", sender="lynktools@gmail.com", recipients=[email]
     )
     msg.body = f"To reset your password, click on the following link: {reset_url}"
-    mail.send(msg)
+    print(msg.body)
+    try:
+        mail.send(msg)
+    except Exception as e:
+        print("Error sending email:", e)
+        return jsonify(success=False, message="Error sending email."), 500
+
 
     return jsonify(success=True, message="Password reset email has been sent."), 200
 
 
-# password reset with token
-@app.route("/reset-password/<token>", methods=["POST"])
+@app.route("/reset-password/<token>", methods=["GET", "POST"])
 def reset_password_with_token(token):
     try:
         # This will raise an exception if the token is invalid or has expired
@@ -272,13 +271,19 @@ def reset_password_with_token(token):
     if not user:
         return jsonify(success=False, message="User not found"), 404
 
-    # Here, you can fetch the user using the user_id and update their password
-    new_password = request.json.get("newPassword")
-    hashed_password = generate_password_hash(new_password, method="sha256")
-    user.password = hashed_password
-    db.session.commit()
+    # Handle the GET request by rendering the password reset form
+    if request.method == "GET":
+        return render_template("reset_password_form.html", token=token)
 
-    return jsonify(success=True, message="Password reset successful"), 200
+    # Handle the POST request
+    elif request.method == "POST":
+        # Fetch the new password from the form data
+        new_password = request.form.get("newPassword")
+        hashed_password = generate_password_hash(new_password, method="sha256")
+        user.password = hashed_password
+        db.session.commit()
+
+        return jsonify(success=True, message="Password reset successful"), 200
 
 
 @app.route("/upload-resume", methods=["POST"])

@@ -15,13 +15,6 @@ class DefaultConfig:
     DB_NAME = os.getenv("DB_NAME")
     SQLALCHEMY_DATABASE_URI = f"postgresql://{DB_USERNAME}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
     
-    # Mail
-    MAIL_SERVER = "smtp.sendgrid.net"
-    MAIL_PORT = 587  # 465 for TLS
-    MAIL_USERNAME = "apikey"
-    MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD")
-    MAIL_USE_TLS = True
-    MAIL_USE_SSL = False
 
     # Session
     SESSION_TYPE = "redis"

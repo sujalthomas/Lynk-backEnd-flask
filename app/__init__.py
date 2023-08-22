@@ -5,20 +5,22 @@ from flask_security import Security
 from flask_session import Session
 import os
 import secrets
-from dotenv import load_dotenv, find_dotenv
+from dotenv import load_dotenv
 import redis
 from flask_cors import CORS
 import logging 
 from itsdangerous import URLSafeTimedSerializer
 
-#initializations
+# Load environment variables
+load_dotenv()
 
-app = Flask(__name__) #
-load_dotenv() 
+# Initialize Flask app
+app = Flask(__name__)
 
+
+#initialize extensions
 sess = Session()
 sess.init_app(app)
-mail = FlaskMail(app)
 
 # Database configurations
 DB_USERNAME = os.getenv("DB_USERNAME")
@@ -65,13 +67,13 @@ app.config["SECURITY_PASSWORD_SALT"] = os.getenv(
 )
 
 # Mail Configurations
-app.config["YOUR_SENDGRID_API_KEY"] = os.getenv("SENDGRID_API_KEY")
 app.config["MAIL_SERVER"] = "smtp.sendgrid.net"
 app.config["MAIL_PORT"] = 587  # 465 for TLS
 app.config["MAIL_USERNAME"] = "apikey"
 app.config["MAIL_PASSWORD"] = os.environ.get("MAIL_PASSWORD")
 app.config["MAIL_USE_TLS"] = True
 app.config["MAIL_USE_SSL"] = False
+mail = FlaskMail(app)
 
 # Current folder path
 UPLOAD_FOLDER = os.path.dirname(os.path.abspath(__file__))
