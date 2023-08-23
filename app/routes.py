@@ -45,7 +45,7 @@ user_counters = {}
 def listen():
     token = request.headers.get("Authorization")
     try:
-        data = serializer.loads(token, salt="password-reset", max_age=3600)
+        data = serializer.loads(token, salt="password-reset", max_age=9600)
     except Exception as e:
         print(f"Token deserialization error: {e}")
         return jsonify(success=False, message="Invalid or expired token"), 401
@@ -64,7 +64,7 @@ def listen():
     date = data.get("Date", "")
     user_id = data.get("user_id")
 
-    decoded_data = serializer.loads(user_id, salt="password-reset", max_age=3600)
+    decoded_data = serializer.loads(user_id, salt="password-reset", max_age=9600)
     
     user_id_decode = decoded_data["user"]
     print("User ID:", user_id_decode)
@@ -141,7 +141,7 @@ def listen():
 def generate_resume():
     token = request.headers.get("Authorization")
     try:
-        data = serializer.loads(token, salt="password-reset", max_age=3600)
+        data = serializer.loads(token, salt="password-reset", max_age=9600)
     except Exception as e:
         print(f"Token deserialization error: {e}")
         return jsonify(success=False, message="Invalid or expired token"), 401
@@ -157,7 +157,7 @@ def generate_resume():
     print(user_id)
     print(job_description)
 
-    decoded_data = serializer.loads(user_id, salt="password-reset", max_age=3600)
+    decoded_data = serializer.loads(user_id, salt="password-reset", max_age=9600)
 
     user_id_decode = decoded_data["user"]
     print("User ID:", user_id_decode)
@@ -261,7 +261,7 @@ def request_reset_password():
 def reset_password_with_token(token):
     try:
         # This will raise an exception if the token is invalid or has expired
-        data = serializer.loads(token, salt="password-reset", max_age=3600)
+        data = serializer.loads(token, salt="password-reset", max_age=9600)
     except:
         return jsonify(success=False, message="Invalid or expired token"), 401
 
@@ -278,7 +278,8 @@ def reset_password_with_token(token):
     # Handle the POST request
     elif request.method == "POST":
         # Fetch the new password from the form data
-        new_password = request.form.get("newPassword")
+        new_password_data = request.get_json()
+        new_password = new_password_data.get("newPassword")
         hashed_password = generate_password_hash(new_password, method="sha256")
         user.password = hashed_password
         db.session.commit()
@@ -298,7 +299,7 @@ def upload_resume():
 
     # Deserialize the token to extract user_id
     try:
-        data = serializer.loads(token, salt="password-reset", max_age=3600)
+        data = serializer.loads(token, salt="password-reset", max_age=9600)
         user_id = data["user"]
         print(user_id)
     except Exception as e:
