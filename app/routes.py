@@ -18,6 +18,7 @@ from flask_security import (
 from werkzeug.security import generate_password_hash
 from flask import send_file
 import io
+from flask import redirect
 
 
 # Routes ###############
@@ -241,7 +242,7 @@ def request_reset_password():
         return jsonify(success=False, message="User not found"), 404
 
     token = serializer.dumps({"user": user.user_id}, salt="password-reset")
-    reset_url = url_for("request_reset_password", token=token, _external=True)
+    reset_url = url_for("reset_password_with_token", token=token, _external=True)
     msg = Message(
         "Password Reset Request", sender="lynktools@gmail.com", recipients=[email]
     )
@@ -273,7 +274,9 @@ def reset_password_with_token(token):
 
     # Handle the GET request by rendering the password reset form
     if request.method == "GET":
-        return render_template("reset_password_form.html", token=token)
+        frontend_url = "http://127.0.0.1:3000/reset-password/{token}".format(token=token)
+        return redirect(frontend_url)
+
 
     # Handle the POST request
     elif request.method == "POST":
@@ -285,6 +288,23 @@ def reset_password_with_token(token):
         db.session.commit()
 
         return jsonify(success=True, message="Password reset successful"), 200
+    
+@app.route("/verify-reset-token/<token>", methods=["GET"])
+def verify_reset_token(token):
+    try:
+        # This will raise an exception if the token is invalid or has expired
+        data = serializer.loads(token, salt="password-reset", max_age=9600)
+    except:
+        return jsonify(success=False, message="Invalid or expired token"), 401
+
+    user_id = data["user"]
+    user = User.query.get(user_id)
+
+    if not user:
+        return jsonify(success=False, message="User not found"), 404
+
+    return jsonify(success=True, message="Valid token"), 200
+
 
 
 @app.route("/upload-resume", methods=["POST"])
