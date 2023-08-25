@@ -1,14 +1,12 @@
-import time
-import token
 from flask import Flask, request, jsonify, url_for, render_template
-from . import UPLOAD_FOLDER, app, db, serializer, mail
+from . import UPLOAD_FOLDER, app, db, serializer, mail, limiter
 from .models import Resume, Role, User
 from .utils import is_api_key_valid, convert_to_txt
 import openai
 import logging
 from docx import Document
 import os
-from flask_mail import Mail as FlaskMail, Message
+from flask_mail import Message
 from werkzeug.security import generate_password_hash as encrypt_password
 from werkzeug.security import check_password_hash as verify_password
 from flask_security import (
@@ -19,6 +17,8 @@ from werkzeug.security import generate_password_hash
 from flask import send_file
 import io
 from flask import redirect
+import random
+from datetime import datetime, timedelta
 
 
 # Routes ###############
@@ -39,7 +39,9 @@ def apiverify():
         logging.error(str(e))
         return jsonify(success=False, message="Invalid API key"), 401
 
+
 user_counters = {}
+
 
 # cover letter generation
 @app.route("/cover-letter", methods=["POST"])
@@ -51,13 +53,11 @@ def listen():
         print(f"Token deserialization error: {e}")
         return jsonify(success=False, message="Invalid or expired token"), 401
 
-
     data = request.get_json()
     api_key = data.get("apiKey")
     openai.api_key = api_key
 
     # request body data from the frontend and assign it as user_id
-
 
     company_name = data.get("Company-name", "")
     job_listing = data.get("Job-Listing", "")
@@ -66,11 +66,11 @@ def listen():
     user_id = data.get("user_id")
 
     decoded_data = serializer.loads(user_id, salt="password-reset", max_age=9600)
-    
+
     user_id_decode = decoded_data["user"]
     print("User ID:", user_id_decode)
 
-        # Construct the path to the user's folder and the resume inside
+    # Construct the path to the user's folder and the resume inside
     user_folder_path = os.path.join(UPLOAD_FOLDER, str(user_id_decode))
     resume_path = os.path.join(user_folder_path, "current_resume.txt")
 
@@ -130,11 +130,17 @@ def listen():
     # Increment user's counter
     user_id_decode = str(user_id_decode)  # Ensure the key is a string
     user_counters[user_id_decode] = user_counters.get(user_id_decode, 0) + 1
-    print(f"User {user_id_decode} has generated {user_counters[user_id_decode]} cover letters.")
+    print(
+        f"User {user_id_decode} has generated {user_counters[user_id_decode]} cover letters."
+    )
 
     # Send the in-memory DOCX as a file
-    return send_file(mem_stream, as_attachment=True, download_name=filename, mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
-
+    return send_file(
+        mem_stream,
+        as_attachment=True,
+        download_name=filename,
+        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
 
 
 # resume generation
@@ -146,7 +152,6 @@ def generate_resume():
     except Exception as e:
         print(f"Token deserialization error: {e}")
         return jsonify(success=False, message="Invalid or expired token"), 401
-
 
     data = request.get_json()
     api_key = data.get("apiKey")
@@ -172,8 +177,8 @@ def generate_resume():
             resume = file.read()
     except FileNotFoundError:
         return jsonify(success=False, message="Resume file not found."), 404
-    
-    print(resume)  
+
+    print(resume)
 
     try:
         completion = openai.ChatCompletion.create(
@@ -225,86 +230,89 @@ def generate_resume():
     # Increment user's counter
     user_id_decode = str(user_id_decode)  # Ensure the key is a string
     user_counters[user_id_decode] = user_counters.get(user_id_decode, 0) + 1
-    print(f"User {user_id_decode} has generated {user_counters[user_id_decode]} cover letters.")
+    print(
+        f"User {user_id_decode} has generated {user_counters[user_id_decode]} cover letters."
+    )
 
     # Send the in-memory DOCX as a file
-    return send_file(mem_stream, as_attachment=True, download_name=filename, mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
-
+    return send_file(
+        mem_stream,
+        as_attachment=True,
+        download_name=filename,
+        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
 
 
 # user registration
 @app.route("/request-reset-password", methods=["POST"])
+@limiter.limit(
+    "2 per minute"
+)  # For instance, limit to 2 requests per minute for this route
 def request_reset_password():
     data = request.get_json()
+    logging.info(f"Hit /request-reset-password with data: {data}")
     email = data.get("email")
     user = User.query.filter_by(email=email).first()
     if not user:
+        logging.warning(f"Password reset attempt for non-existent email: {email}")
         return jsonify(success=False, message="User not found"), 404
 
-    token = serializer.dumps({"user": user.user_id}, salt="password-reset")
-    reset_url = url_for("reset_password_with_token", token=token, _external=True)
+    code = str(random.randint(100000, 999999))
+    user.password_reset_code = code
+    user.password_reset_code_expiration = datetime.utcnow() + timedelta(minutes=30)
+    db.session.commit()
+
     msg = Message(
-        "Password Reset Request", sender="lynktools@gmail.com", recipients=[email]
+        "Password Reset Code", sender="lynktools@gmail.com", recipients=[email]
     )
-    msg.body = f"To reset your password, click on the following link: {reset_url}"
-    print(msg.body)
+
+    msg.body = f"Your password reset code is: {code}"
     try:
         mail.send(msg)
     except Exception as e:
-        print("Error sending email:", e)
+        logging.error(f"Error sending email to {email}: {str(e)}")
         return jsonify(success=False, message="Error sending email."), 500
 
-
-    return jsonify(success=True, message="Password reset email has been sent."), 200
-
-
-@app.route("/reset-password/<token>", methods=["GET", "POST"])
-def reset_password_with_token(token):
-    try:
-        # This will raise an exception if the token is invalid or has expired
-        data = serializer.loads(token, salt="password-reset", max_age=9600)
-    except:
-        return jsonify(success=False, message="Invalid or expired token"), 401
-
-    user_id = data["user"]
-    user = User.query.get(user_id)
-
-    if not user:
-        return jsonify(success=False, message="User not found"), 404
-
-    # Handle the GET request by rendering the password reset form
-    if request.method == "GET":
-        frontend_url = "http://127.0.0.1:3000/reset-password/{token}".format(token=token)
-        return redirect(frontend_url)
+    logging.info(f"Sent password reset code to: {email}")
+    return jsonify(success=True, message="Password reset code has been sent."), 200
 
 
-    # Handle the POST request
-    elif request.method == "POST":
-        # Fetch the new password from the form data
-        new_password_data = request.get_json()
-        new_password = new_password_data.get("newPassword")
-        hashed_password = generate_password_hash(new_password, method="sha256")
-        user.password = hashed_password
-        db.session.commit()
+@app.route("/reset-password", methods=["POST"])
+@limiter.limit(
+    "3 per minute"
+)  # For instance, limit to 3 requests per minute for this route
+def reset_password_with_code():
+    raw_data = request.data.decode('utf-8')  # Decode the incoming byte data to a string
+    logging.info(f"Raw data received: {raw_data}")
+    data = request.get_json()
+    logging.info(f"Hit /reset-password with data: {data}")
+    email = data.get("email")
+    code = data.get("code")
+    new_password = data.get("newPassword")
 
-        return jsonify(success=True, message="Password reset successful"), 200
-    
-@app.route("/verify-reset-token/<token>", methods=["GET"])
-def verify_reset_token(token):
-    try:
-        # This will raise an exception if the token is invalid or has expired
-        data = serializer.loads(token, salt="password-reset", max_age=9600)
-    except:
-        return jsonify(success=False, message="Invalid or expired token"), 401
-
-    user_id = data["user"]
-    user = User.query.get(user_id)
+    user = User.query.filter_by(email=email).first()
 
     if not user:
+        logging.warning(f"Password reset attempt for non-existent email: {email}")
         return jsonify(success=False, message="User not found"), 404
 
-    return jsonify(success=True, message="Valid token"), 200
+    if (
+        user.password_reset_code != code
+        or datetime.utcnow() > user.password_reset_code_expiration
+    ):
+        logging.warning(f"Invalid or expired code used for email: {email}")
+        return jsonify(success=False, message="Invalid or expired code"), 401
 
+    hashed_password = generate_password_hash(new_password, method="sha256")
+    user.password = hashed_password
+
+    user.password_reset_code = None
+    user.password_reset_code_expiration = None
+
+    db.session.commit()
+
+    logging.info(f"Password reset successful for: {email}")
+    return jsonify(success=True, message="Password reset successful"), 200
 
 
 @app.route("/upload-resume", methods=["POST"])
@@ -325,7 +333,6 @@ def upload_resume():
     except Exception as e:
         print(f"Deserialization error: {e}")
         return jsonify(success=False, message="Invalid or expired token"), 420
-
 
     # Check if file is present in the request
     if "resume" not in request.files:

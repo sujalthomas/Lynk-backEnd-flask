@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, request
 from flask_sqlalchemy import SQLAlchemy
 from flask_mail import Mail as FlaskMail
 from flask_security import Security
@@ -10,6 +10,10 @@ import redis
 from flask_cors import CORS
 import logging 
 from itsdangerous import URLSafeTimedSerializer
+from flask_limiter import Limiter
+import logging
+from flask_limiter.util import get_remote_address
+
 
 # Load environment variables
 load_dotenv()
@@ -47,6 +51,30 @@ CORS(
     resources={r"/*": {"origins": ["https://www.linkedin.com"]}},
     supports_credentials=True,
 )
+
+# Set up rate limiting
+def get_remote_address():
+    return request.remote_addr
+
+def get_remote_address():
+    return request.remote_addr
+
+REDIS_URL = "redis://{host}:{port}/1".format(
+    host=os.getenv("REDIS_HOST", "localhost"),
+    port=os.getenv("REDIS_PORT", 6379)
+)
+
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["5 per minute"],
+    storage_uri=REDIS_URL
+)
+
+
+
+# Set up logging
+logging.basicConfig(filename="password_reset.log", level=logging.INFO)
 
 # Database configuration
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
@@ -91,6 +119,8 @@ app.config["SECURITY_CONFIRMABLE"] = True
 app.config["SECURITY_RECOVERABLE"] = True
 app.config["SECURITY_REGISTER_USER_TEMPLATE"] = "security/register_user.html"
 app.config["SECURITY_LOGIN_USER_TEMPLATE"] = "security/login_user.html"
+
+
 
 # Generate DB tables
 with app.app_context():
