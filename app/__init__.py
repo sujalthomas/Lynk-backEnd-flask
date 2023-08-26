@@ -3,6 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_mail import Mail as FlaskMail
 from flask_security import Security
 from flask_session import Session
+from flask_bcrypt import Bcrypt
 import os
 import secrets
 from dotenv import load_dotenv
@@ -20,6 +21,8 @@ load_dotenv()
 
 # Initialize Flask app
 app = Flask(__name__)
+
+bcrypt = Bcrypt(app)
 
 
 #initialize extensions
@@ -79,6 +82,8 @@ logging.basicConfig(filename="password_reset.log", level=logging.INFO)
 # Database configuration
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
+
+
 
 # Secuirty configurations
 SECRET_KEY = os.getenv("SECRET_KEY", default=secrets.token_urlsafe(16))

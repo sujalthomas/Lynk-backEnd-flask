@@ -58,18 +58,28 @@ roles_users = db.Table(
     db.Column("role_id", db.Integer(), db.ForeignKey("role.id")),
 )
 
-# Define User model
 class User(db.Model, UserMixin):
     user_id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(255))
     password = db.Column(db.String(255), nullable=False)
     email = db.Column(db.String(150), unique=True, nullable=False)
-    fs_uniquifier = db.Column(db.String(255), unique=True)  # Add this line
+    fs_uniquifier = db.Column(db.String(255), unique=True)
     roles = db.relationship(
         "Role", secondary=roles_users, backref=db.backref("users", lazy="dynamic")
     )
+    
+    # New columns for reset code and its expiration
+    password_reset_code = db.Column(db.String(6))
+    password_reset_code_expiration = db.Column(db.DateTime)
+    
+    # New columns for email verification
+    is_active = db.Column(db.Boolean, default=False)
+    verification_code = db.Column(db.String(6))
+    verification_code_expiration = db.Column(db.DateTime)
+
 
 #proceeding to remove db stuff and establish flask security
+
 
 
 # Define hashed_password

@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify, url_for, render_template
-from . import UPLOAD_FOLDER, app, db, serializer, mail, limiter
+from . import UPLOAD_FOLDER, app, db, serializer, mail, limiter, bcrypt
 from .models import Resume, Role, User
 from .utils import is_api_key_valid, convert_to_txt
 import openai
@@ -282,8 +282,6 @@ def request_reset_password():
     "3 per minute"
 )  # For instance, limit to 3 requests per minute for this route
 def reset_password_with_code():
-    raw_data = request.data.decode('utf-8')  # Decode the incoming byte data to a string
-    logging.info(f"Raw data received: {raw_data}")
     data = request.get_json()
     logging.info(f"Hit /reset-password with data: {data}")
     email = data.get("email")
@@ -303,16 +301,16 @@ def reset_password_with_code():
         logging.warning(f"Invalid or expired code used for email: {email}")
         return jsonify(success=False, message="Invalid or expired code"), 401
 
-    hashed_password = generate_password_hash(new_password, method="sha256")
+    hashed_password = bcrypt.generate_password_hash(new_password).decode('utf-8')
     user.password = hashed_password
 
     user.password_reset_code = None
     user.password_reset_code_expiration = None
-
     db.session.commit()
 
     logging.info(f"Password reset successful for: {email}")
     return jsonify(success=True, message="Password reset successful"), 200
+
 
 
 @app.route("/upload-resume", methods=["POST"])
@@ -385,49 +383,86 @@ def upload_resume():
     )
 
 
-# user authentication
-@app.route("/authenticate", methods=["POST"])
-def authenticate():
+
+
+
+@app.route("/register", methods=["POST"])
+def register():
     data = request.get_json()
-    print(data)
-    action = data.get("action")
+    email = data.get("email")
+    password = data.get("password")
+    name = data.get("name")
+
+    hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
+
+    user = User.query.filter_by(email=email).first()
+    if user:
+        return jsonify(success=False, message="User already exists"), 400
+
+    user_role = Role.query.filter_by(name="user").first()
+    if not user_role:
+        user_role = Role(name="user", description="Regular user")
+        db.session.add(user_role)
+        db.session.commit()
+
+    new_user = User(email=email, password=hashed_password, is_active=False)
+    new_user.roles.append(user_role)
+    db.session.add(new_user)
+    db.session.commit()
+
+    # Generate verification code
+    code = str(random.randint(100000, 999999))
+    new_user.verification_code = code
+    new_user.verification_code_expiration = datetime.utcnow() + timedelta(minutes=30)
+    db.session.commit()
+
+    # Send verification code to user's email
+    msg = Message("Verification Code", sender="lynktools@gmail.com", recipients=[email])
+    msg.body = f"Your verification code is: {code}"
+    try:
+        mail.send(msg)
+    except Exception as e:
+        logging.error(f"Error sending email to {email}: {str(e)}")
+        return jsonify(success=False, message="Error sending email."), 500
+
+    return jsonify(success=True, message="Verification code has been sent to your email."), 200
+
+@app.route("/verify", methods=["POST"])
+def verify():
+    data = request.get_json()
+    email = data.get("email")
+    code = data.get("code")
+
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        return jsonify(success=False, message="User not found"), 404
+
+    if user.verification_code != code or datetime.utcnow() > user.verification_code_expiration:
+        return jsonify(success=False, message="Invalid or expired code"), 401
+
+    user.is_active = True
+    user.verification_code = None
+    user.verification_code_expiration = None
+    db.session.commit()
+
+    return jsonify(success=True, message="Registration successful"), 200
+
+@app.route("/login", methods=["POST"])
+def login():
+    data = request.get_json()
     email = data.get("email")
     password = data.get("password")
 
-    if action == "register":
-        name = data.get("name")
-        hashed_password = encrypt_password(password)
-        print(hashed_password)
-
-        user = User.query.filter_by(email=email).first()
-        if user:
-            return jsonify(success=False, message="User already exists"), 400
-
-        user_role = Role.query.filter_by(name="user").first()
-        if not user_role:
-            user_role = Role(name="user", description="Regular user")
-            db.session.add(user_role)
-            db.session.commit()
-
-        new_user = User(email=email, password=hashed_password)
-        new_user.roles.append(user_role)
-        db.session.add(new_user)
-        db.session.commit()
-
-        return jsonify(success=True, message="User registered successfully"), 200
-
-    elif action == "login":
-        user = User.query.filter_by(email=email).first()
-    if not user or not verify_password(user.password, password):
+    user = User.query.filter_by(email=email).first()
+    if not user or not bcrypt.check_password_hash(user.password, password) or not user.is_active:
         return jsonify(success=False, message="Invalid email or password"), 401
 
-    # session["user_id"] = user.user_id
-
-    # Generate token or handle login as needed
     token = serializer.dumps({"user": user.user_id}, salt="password-reset")
-    print(token)
-    # print(user)
     return jsonify(success=True, token=token), 200
+
+
+
+
 
 
 # admin page

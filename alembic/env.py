@@ -4,9 +4,11 @@ from sqlalchemy import pool
 from alembic import context
 import sys
 
-sys.path.append('/Users/sujalthomas/Documents/GitHub/Lynk-backEnd-flask')
-from playground import db
-from playground import app
+
+sys.path.append('/Users/sujalthomas/Documents/GitHub/Lynk-backEnd-flask/app')
+from app import db
+from app import app
+
 
 with app.app_context():
     config = context.config
