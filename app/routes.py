@@ -7,13 +7,6 @@ import logging
 from docx import Document
 import os
 from flask_mail import Message
-from werkzeug.security import generate_password_hash as encrypt_password
-from werkzeug.security import check_password_hash as verify_password
-from flask_security import (
-    roles_required,
-    login_required,
-)
-from werkzeug.security import generate_password_hash
 from flask import send_file
 import io
 from flask import redirect
@@ -462,12 +455,3 @@ def login():
 
 
 
-
-
-
-# admin page
-@app.route("/admin")
-@roles_required("admin")
-@login_required
-def admin():
-    return "Admin Page"
