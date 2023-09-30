@@ -1,18 +1,9 @@
 from datetime import datetime
 from . import db
-from flask_security import (
-    Security,
-    SQLAlchemyUserDatastore,
-    UserMixin,
-    RoleMixin,
-    roles_required,
-    login_required,
-)
 from werkzeug.security import generate_password_hash as encrypt_password
 from werkzeug.security import check_password_hash as verify_password
-from flask_security.forms import RegisterForm, LoginForm
-from wtforms import StringField
-from wtforms.validators import DataRequired
+from wtforms import Form, StringField, PasswordField, validators
+
 
 
 # MODELS ###############
@@ -46,10 +37,11 @@ class UsageStatistic(db.Model):
     user = db.relationship("User", backref="usage_statistics")
 
 # Define roles
-class Role(db.Model, RoleMixin):
+class Role(db.Model):
     id = db.Column(db.Integer(), primary_key=True)
     name = db.Column(db.String(80), unique=True)
     description = db.Column(db.String(255))
+
 
 # user roles
 roles_users = db.Table(
@@ -58,7 +50,7 @@ roles_users = db.Table(
     db.Column("role_id", db.Integer(), db.ForeignKey("role.id")),
 )
 
-class User(db.Model, UserMixin):
+class User(db.Model):
     user_id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(255))
     password = db.Column(db.String(255), nullable=False)
@@ -73,12 +65,55 @@ class User(db.Model, UserMixin):
     password_reset_code_expiration = db.Column(db.DateTime)
     
     # New columns for email verification
+    # New columns for authentication and authorization
     is_active = db.Column(db.Boolean, default=False)
     verification_code = db.Column(db.String(6))
     verification_code_expiration = db.Column(db.DateTime)
 
+    # New methods and properties for authentication and authorization
+    @property
+    def active(self):
+        return self.is_active
 
-#proceeding to remove db stuff and establish flask security
+    def get_id(self):
+        return self.user_id
+
+    def has_role(self, role):
+        return role in [role.name for role in self.roles]
+
+
+
+
+# Define user data store
+class UserDatastore:
+    def __init__(self, db, user_model, role_model):
+        self.db = db
+        self.user_model = user_model
+        self.role_model = role_model
+
+    def find_user(self, **kwargs):
+        return self.user_model.query.filter_by(**kwargs).first()
+
+    def find_role(self, role):
+        return self.role_model.query.filter_by(name=role).first()
+
+    def add_role_to_user(self, user, role):
+        role = self.find_role(role)
+        if role:
+            user.roles.append(role)
+            self.db.session.commit()
+
+    def remove_role_from_user(self, user, role):
+        role = self.find_role(role)
+        if role:
+            user.roles.remove(role)
+            self.db.session.commit()
+
+    def get_user(self, user_id):
+        return self.user_model.query.get(user_id)
+
+    def get_role(self, role_id):
+        return self.role_model.query.get(role_id)
 
 
 
@@ -87,9 +122,13 @@ password = "supersecretpassword"
 hashed_password = encrypt_password(password)
 
 # Setup Flask-Security
-user_datastore = SQLAlchemyUserDatastore(db, User, Role)
+user_datastore = UserDatastore(db, User, Role)
 
 
 # Custom registration form
-class ExtendedRegisterForm(RegisterForm):
-    username = StringField("Username", [DataRequired()])
+class RegistrationForm(Form):
+    username = StringField('Username', [validators.DataRequired()])
+    password = PasswordField('Password', [validators.DataRequired()])
+    # ...
+    # any other fields and validators that you need
+    # ...
